@@ -1,0 +1,1051 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" width="1200" height="918" onload="init(evt)" viewBox="0 0 1200 918" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<style type="text/css">
+	text { font-family:Verdana; font-size:12px; fill:black; }
+	.func_g:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+</style>
+<script type="text/ecmascript">
+<![CDATA[
+	var details, searchbtn, matchedtxt, svg;
+	function init(evt) {
+		details = document.getElementById("details").firstChild;
+		searchbtn = document.getElementById("search");
+		matchedtxt = document.getElementById("matched");
+		svg = document.getElementsByTagName("svg")[0];
+		searching = 0;
+	}
+
+	// mouse-over for info
+	function s(node) {		// show
+		info = g_to_text(node);
+		details.nodeValue = "Function: " + info;
+	}
+	function c() {			// clear
+		details.nodeValue = ' ';
+	}
+
+	// ctrl-F for search
+	window.addEventListener("keydown",function (e) {
+		if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+			e.preventDefault();
+			search_prompt();
+		}
+	})
+
+	// functions
+	function find_child(parent, name, attr) {
+		var children = parent.childNodes;
+		for (var i=0; i<children.length;i++) {
+			if (children[i].tagName == name)
+				return (attr != undefined) ? children[i].attributes[attr].value : children[i];
+		}
+		return;
+	}
+	function orig_save(e, attr, val) {
+		if (e.attributes["_orig_"+attr] != undefined) return;
+		if (e.attributes[attr] == undefined) return;
+		if (val == undefined) val = e.attributes[attr].value;
+		e.setAttribute("_orig_"+attr, val);
+	}
+	function orig_load(e, attr) {
+		if (e.attributes["_orig_"+attr] == undefined) return;
+		e.attributes[attr].value = e.attributes["_orig_"+attr].value;
+		e.removeAttribute("_orig_"+attr);
+	}
+	function g_to_text(e) {
+		var text = find_child(e, "title").firstChild.nodeValue;
+		return (text)
+	}
+	function g_to_func(e) {
+		var func = g_to_text(e);
+		// if there's any manipulation we want to do to the function
+		// name before it's searched, do it here before returning.
+		return (func);
+	}
+	function update_text(e) {
+		var r = find_child(e, "rect");
+		var t = find_child(e, "text");
+		var w = parseFloat(r.attributes["width"].value) -3;
+		var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+		t.attributes["x"].value = parseFloat(r.attributes["x"].value) +3;
+
+		// Smaller than this size won't fit anything
+		if (w < 2*12*0.59) {
+			t.textContent = "";
+			return;
+		}
+
+		t.textContent = txt;
+		// Fit in full text width
+		if (/^ *$/.test(txt) || t.getSubStringLength(0, txt.length) < w)
+			return;
+
+		for (var x=txt.length-2; x>0; x--) {
+			if (t.getSubStringLength(0, x+2) <= w) {
+				t.textContent = txt.substring(0,x) + "..";
+				return;
+			}
+		}
+		t.textContent = "";
+	}
+
+	// zoom
+	function zoom_reset(e) {
+		if (e.attributes != undefined) {
+			orig_load(e, "x");
+			orig_load(e, "width");
+		}
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_reset(c[i]);
+		}
+	}
+	function zoom_child(e, x, ratio) {
+		if (e.attributes != undefined) {
+			if (e.attributes["x"] != undefined) {
+				orig_save(e, "x");
+				e.attributes["x"].value = (parseFloat(e.attributes["x"].value) - x - 10) * ratio + 10;
+				if(e.tagName == "text") e.attributes["x"].value = find_child(e.parentNode, "rect", "x") + 3;
+			}
+			if (e.attributes["width"] != undefined) {
+				orig_save(e, "width");
+				e.attributes["width"].value = parseFloat(e.attributes["width"].value) * ratio;
+			}
+		}
+
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_child(c[i], x-10, ratio);
+		}
+	}
+	function zoom_parent(e) {
+		if (e.attributes) {
+			if (e.attributes["x"] != undefined) {
+				orig_save(e, "x");
+				e.attributes["x"].value = 10;
+			}
+			if (e.attributes["width"] != undefined) {
+				orig_save(e, "width");
+				e.attributes["width"].value = parseInt(svg.width.baseVal.value) - (10*2);
+			}
+		}
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_parent(c[i]);
+		}
+	}
+	function zoom(node) {
+		var attr = find_child(node, "rect").attributes;
+		var width = parseFloat(attr["width"].value);
+		var xmin = parseFloat(attr["x"].value);
+		var xmax = parseFloat(xmin + width);
+		var ymin = parseFloat(attr["y"].value);
+		var ratio = (svg.width.baseVal.value - 2*10) / width;
+
+		// XXX: Workaround for JavaScript float issues (fix me)
+		var fudge = 0.0001;
+
+		var unzoombtn = document.getElementById("unzoom");
+		unzoombtn.style["opacity"] = "1.0";
+
+		var el = document.getElementsByTagName("g");
+		for(var i=0;i<el.length;i++){
+			var e = el[i];
+			var a = find_child(e, "rect").attributes;
+			var ex = parseFloat(a["x"].value);
+			var ew = parseFloat(a["width"].value);
+			// Is it an ancestor
+			if (0 == 0) {
+				var upstack = parseFloat(a["y"].value) > ymin;
+			} else {
+				var upstack = parseFloat(a["y"].value) < ymin;
+			}
+			if (upstack) {
+				// Direct ancestor
+				if (ex <= xmin && (ex+ew+fudge) >= xmax) {
+					e.style["opacity"] = "0.5";
+					zoom_parent(e);
+					e.onclick = function(e){unzoom(); zoom(this);};
+					update_text(e);
+				}
+				// not in current path
+				else
+					e.style["display"] = "none";
+			}
+			// Children maybe
+			else {
+				// no common path
+				if (ex < xmin || ex + fudge >= xmax) {
+					e.style["display"] = "none";
+				}
+				else {
+					zoom_child(e, xmin, ratio);
+					e.onclick = function(e){zoom(this);};
+					update_text(e);
+				}
+			}
+		}
+	}
+	function unzoom() {
+		var unzoombtn = document.getElementById("unzoom");
+		unzoombtn.style["opacity"] = "0.0";
+
+		var el = document.getElementsByTagName("g");
+		for(i=0;i<el.length;i++) {
+			el[i].style["display"] = "block";
+			el[i].style["opacity"] = "1";
+			zoom_reset(el[i]);
+			update_text(el[i]);
+		}
+	}
+
+	// search
+	function reset_search() {
+		var el = document.getElementsByTagName("rect");
+		for (var i=0; i < el.length; i++) {
+			orig_load(el[i], "fill")
+		}
+	}
+	function search_prompt() {
+		if (!searching) {
+			var term = prompt("Enter a search term (regexp " +
+			    "allowed, eg: ^ext4_)", "");
+			if (term != null) {
+				search(term)
+			}
+		} else {
+			reset_search();
+			searching = 0;
+			searchbtn.style["opacity"] = "0.1";
+			searchbtn.firstChild.nodeValue = "Search"
+			matchedtxt.style["opacity"] = "0.0";
+			matchedtxt.firstChild.nodeValue = ""
+		}
+	}
+	function search(term) {
+		var re = new RegExp(term);
+		var el = document.getElementsByTagName("g");
+		var matches = new Object();
+		var maxwidth = 0;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			if (e.attributes["class"].value != "func_g")
+				continue;
+			var func = g_to_func(e);
+			var rect = find_child(e, "rect");
+			if (rect == null) {
+				// the rect might be wrapped in an anchor
+				// if nameattr href is being used
+				if (rect = find_child(e, "a")) {
+				    rect = find_child(r, "rect");
+				}
+			}
+			if (func == null || rect == null)
+				continue;
+
+			// Save max width. Only works as we have a root frame
+			var w = parseFloat(rect.attributes["width"].value);
+			if (w > maxwidth)
+				maxwidth = w;
+
+			if (func.match(re)) {
+				// highlight
+				var x = parseFloat(rect.attributes["x"].value);
+				orig_save(rect, "fill");
+				rect.attributes["fill"].value =
+				    "rgb(230,0,230)";
+
+				// remember matches
+				if (matches[x] == undefined) {
+					matches[x] = w;
+				} else {
+					if (w > matches[x]) {
+						// overwrite with parent
+						matches[x] = w;
+					}
+				}
+				searching = 1;
+			}
+		}
+		if (!searching)
+			return;
+
+		searchbtn.style["opacity"] = "1.0";
+		searchbtn.firstChild.nodeValue = "Reset Search"
+
+		// calculate percent matched, excluding vertical overlap
+		var count = 0;
+		var lastx = -1;
+		var lastw = 0;
+		var keys = Array();
+		for (k in matches) {
+			if (matches.hasOwnProperty(k))
+				keys.push(k);
+		}
+		// sort the matched frames by their x location
+		// ascending, then width descending
+		keys.sort(function(a, b){
+			return a - b;
+		});
+		// Step through frames saving only the biggest bottom-up frames
+		// thanks to the sort order. This relies on the tree property
+		// where children are always smaller than their parents.
+		var fudge = 0.0001;	// JavaScript floating point
+		for (var k in keys) {
+			var x = parseFloat(keys[k]);
+			var w = matches[keys[k]];
+			if (x >= lastx + lastw - fudge) {
+				count += w;
+				lastx = x;
+				lastw = w;
+			}
+		}
+		// display matched percent
+		matchedtxt.style["opacity"] = "1.0";
+		pct = 100 * count / maxwidth;
+		if (pct == 100)
+			pct = "100"
+		else
+			pct = pct.toFixed(1)
+		matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+	}
+	function searchover(e) {
+		searchbtn.style["opacity"] = "1.0";
+	}
+	function searchout(e) {
+		if (searching) {
+			searchbtn.style["opacity"] = "1.0";
+		} else {
+			searchbtn.style["opacity"] = "0.1";
+		}
+	}
+]]>
+</script>
+<rect x="0" y="0" width="100%" height="100%" fill="rgb(240,240,220)"/>
+<text x="600" y="24" text-anchor="middle" style="font-size:17px">Flame Graph</text>
+<text x="10" y="901" id="details"> </text>
+<text x="10" y="24" id="unzoom" onclick="unzoom()" style="opacity:0.0;cursor:pointer">Reset Zoom</text>
+<text x="1090" y="24" id="search" onmouseover="searchover()" onmouseout="searchout()" onclick="search_prompt()" style="opacity:0.1;cursor:pointer">Search</text>
+<text x="1090" y="901" id="matched"> </text>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>all (9,620,663 samples, 100.00%)</title><rect x="10.0" y="867.0" width="1180.0" height="15" fill="#f67575" rx="2" ry="2"/>
+<text x="13.0" y="878.0">all</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (3,457,260 samples, 35.94%)</title><rect x="10.0" y="851.0" width="424.1" height="15" fill="#dd5151" rx="2" ry="2"/>
+<text x="13.0" y="862.0">[unknown]</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1,889,240 samples, 19.64%)</title><rect x="10.0" y="835.0" width="231.7" height="15" fill="#f37070" rx="2" ry="2"/>
+<text x="13.0" y="846.0">[unknown]</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_futex_wait.constprop.1 (1,889,223 samples, 19.64%)</title><rect x="10.0" y="819.0" width="231.7" height="15" fill="#f37171" rx="2" ry="2"/>
+<text x="13.0" y="830.0">do_futex_wait.constprop.1</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>entry_SYSCALL_64_after_hwframe (1,889,130 samples, 19.64%)</title><rect x="10.0" y="803.0" width="231.7" height="15" fill="#f99500" rx="2" ry="2"/>
+<text x="13.0" y="814.0">entry_SYSCALL_64_after_hwframe</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_syscall_64 (1,889,130 samples, 19.64%)</title><rect x="10.0" y="787.0" width="231.7" height="15" fill="#ca6600" rx="2" ry="2"/>
+<text x="13.0" y="798.0">do_syscall_64</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sys_futex (1,887,943 samples, 19.62%)</title><rect x="10.2" y="771.0" width="231.5" height="15" fill="#d36f00" rx="2" ry="2"/>
+<text x="13.2" y="782.0">sys_futex</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_futex (1,887,943 samples, 19.62%)</title><rect x="10.2" y="755.0" width="231.5" height="15" fill="#ef8b00" rx="2" ry="2"/>
+<text x="13.2" y="766.0">do_futex</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait (1,887,943 samples, 19.62%)</title><rect x="10.2" y="739.0" width="231.5" height="15" fill="#d06c00" rx="2" ry="2"/>
+<text x="13.2" y="750.0">futex_wait</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait_queue_me (1,887,943 samples, 19.62%)</title><rect x="10.2" y="723.0" width="231.5" height="15" fill="#e27e00" rx="2" ry="2"/>
+<text x="13.2" y="734.0">futex_wait_queue_me</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>schedule (1,887,943 samples, 19.62%)</title><rect x="10.2" y="707.0" width="231.5" height="15" fill="#dd7900" rx="2" ry="2"/>
+<text x="13.2" y="718.0">schedule</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__pthread_cond_wait (868,691 samples, 9.03%)</title><rect x="242.0" y="835.0" width="106.6" height="15" fill="#ea6464" rx="2" ry="2"/>
+<text x="245.0" y="846.0">__pthread_con..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>entry_SYSCALL_64_after_hwframe (868,645 samples, 9.03%)</title><rect x="242.0" y="819.0" width="106.6" height="15" fill="#d57100" rx="2" ry="2"/>
+<text x="245.0" y="830.0">entry_SYSCALL..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_syscall_64 (868,645 samples, 9.03%)</title><rect x="242.0" y="803.0" width="106.6" height="15" fill="#df7b00" rx="2" ry="2"/>
+<text x="245.0" y="814.0">do_syscall_64</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sys_futex (868,192 samples, 9.02%)</title><rect x="242.1" y="787.0" width="106.5" height="15" fill="#fb9700" rx="2" ry="2"/>
+<text x="245.1" y="798.0">sys_futex</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_futex (868,192 samples, 9.02%)</title><rect x="242.1" y="771.0" width="106.5" height="15" fill="#f99500" rx="2" ry="2"/>
+<text x="245.1" y="782.0">do_futex</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait (868,192 samples, 9.02%)</title><rect x="242.1" y="755.0" width="106.5" height="15" fill="#e78300" rx="2" ry="2"/>
+<text x="245.1" y="766.0">futex_wait</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait_queue_me (868,192 samples, 9.02%)</title><rect x="242.1" y="739.0" width="106.5" height="15" fill="#ec8800" rx="2" ry="2"/>
+<text x="245.1" y="750.0">futex_wait_qu..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>schedule (868,192 samples, 9.02%)</title><rect x="242.1" y="723.0" width="106.5" height="15" fill="#c76300" rx="2" ry="2"/>
+<text x="245.1" y="734.0">schedule</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_futex_wait.constprop.1 (696,810 samples, 7.24%)</title><rect x="348.6" y="835.0" width="85.4" height="15" fill="#e96262" rx="2" ry="2"/>
+<text x="351.6" y="846.0">do_futex_w..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>entry_SYSCALL_64_after_hwframe (696,790 samples, 7.24%)</title><rect x="348.6" y="819.0" width="85.4" height="15" fill="#bf5b00" rx="2" ry="2"/>
+<text x="351.6" y="830.0">entry_SYSC..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_syscall_64 (696,790 samples, 7.24%)</title><rect x="348.6" y="803.0" width="85.4" height="15" fill="#cd6900" rx="2" ry="2"/>
+<text x="351.6" y="814.0">do_syscall..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sys_futex (696,623 samples, 7.24%)</title><rect x="348.6" y="787.0" width="85.4" height="15" fill="#c66200" rx="2" ry="2"/>
+<text x="351.6" y="798.0">sys_futex</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_futex (696,623 samples, 7.24%)</title><rect x="348.6" y="771.0" width="85.4" height="15" fill="#f28e00" rx="2" ry="2"/>
+<text x="351.6" y="782.0">do_futex</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait (696,623 samples, 7.24%)</title><rect x="348.6" y="755.0" width="85.4" height="15" fill="#c86400" rx="2" ry="2"/>
+<text x="351.6" y="766.0">futex_wait</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait_queue_me (696,623 samples, 7.24%)</title><rect x="348.6" y="739.0" width="85.4" height="15" fill="#d87400" rx="2" ry="2"/>
+<text x="351.6" y="750.0">futex_wait..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>schedule (696,623 samples, 7.24%)</title><rect x="348.6" y="723.0" width="85.4" height="15" fill="#c66200" rx="2" ry="2"/>
+<text x="351.6" y="734.0">schedule</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__pthread_cond_timedwait (1,612,187 samples, 16.76%)</title><rect x="434.1" y="851.0" width="197.7" height="15" fill="#cd3a3a" rx="2" ry="2"/>
+<text x="437.1" y="862.0">__pthread_cond_timedwait</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>entry_SYSCALL_64_after_hwframe (1,612,107 samples, 16.76%)</title><rect x="434.1" y="835.0" width="197.7" height="15" fill="#fe9a00" rx="2" ry="2"/>
+<text x="437.1" y="846.0">entry_SYSCALL_64_after_hwf..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_syscall_64 (1,612,107 samples, 16.76%)</title><rect x="434.1" y="819.0" width="197.7" height="15" fill="#cc6800" rx="2" ry="2"/>
+<text x="437.1" y="830.0">do_syscall_64</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sys_futex (1,611,145 samples, 16.75%)</title><rect x="434.2" y="803.0" width="197.6" height="15" fill="#df7b00" rx="2" ry="2"/>
+<text x="437.2" y="814.0">sys_futex</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_futex (1,611,145 samples, 16.75%)</title><rect x="434.2" y="787.0" width="197.6" height="15" fill="#f49000" rx="2" ry="2"/>
+<text x="437.2" y="798.0">do_futex</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait (1,611,145 samples, 16.75%)</title><rect x="434.2" y="771.0" width="197.6" height="15" fill="#e58100" rx="2" ry="2"/>
+<text x="437.2" y="782.0">futex_wait</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait_queue_me (1,611,145 samples, 16.75%)</title><rect x="434.2" y="755.0" width="197.6" height="15" fill="#d16d00" rx="2" ry="2"/>
+<text x="437.2" y="766.0">futex_wait_queue_me</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>schedule (1,611,145 samples, 16.75%)</title><rect x="434.2" y="739.0" width="197.6" height="15" fill="#e78300" rx="2" ry="2"/>
+<text x="437.2" y="750.0">schedule</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java/lang/Thread.run (3,782,900 samples, 39.32%)</title><rect x="631.8" y="851.0" width="464.0" height="15" fill="#51e451" rx="2" ry="2"/>
+<text x="634.8" y="862.0">java/lang/Thread.run</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/util/concurrent/FastThreadLocalRunnable.run (3,782,900 samples, 39.32%)</title><rect x="631.8" y="835.0" width="464.0" height="15" fill="#4fe34f" rx="2" ry="2"/>
+<text x="634.8" y="846.0">io/netty/util/concurrent/FastThreadLocalRunnable.run</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/util/concurrent/SingleThreadEventExecutor$5.run (3,782,900 samples, 39.32%)</title><rect x="631.8" y="819.0" width="464.0" height="15" fill="#6cfd6c" rx="2" ry="2"/>
+<text x="634.8" y="830.0">io/netty/util/concurrent/SingleThreadEventExecutor$5.run</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/nio/NioEventLoop.run (3,782,899 samples, 39.32%)</title><rect x="631.8" y="803.0" width="464.0" height="15" fill="#43d843" rx="2" ry="2"/>
+<text x="634.8" y="814.0">io/netty/channel/nio/NioEventLoop.run</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/nio/NioEventLoop.processSelectedKeys (56,743 samples, 0.59%)</title><rect x="631.8" y="787.0" width="7.0" height="15" fill="#60f260" rx="2" ry="2"/>
+<text x="634.8" y="798.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/nio/NioEventLoop.processSelectedKeysOptimized (56,742 samples, 0.59%)</title><rect x="631.8" y="771.0" width="7.0" height="15" fill="#51e451" rx="2" ry="2"/>
+<text x="634.8" y="782.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/nio/NioEventLoop.processSelectedKey (56,734 samples, 0.59%)</title><rect x="631.8" y="755.0" width="7.0" height="15" fill="#60f260" rx="2" ry="2"/>
+<text x="634.8" y="766.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/nio/AbstractNioByteChannel$NioByteUnsafe.read (41,151 samples, 0.43%)</title><rect x="631.9" y="739.0" width="5.0" height="15" fill="#4ade4a" rx="2" ry="2"/>
+<text x="634.9" y="750.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/DefaultChannelPipeline.fireChannelRead (40,129 samples, 0.42%)</title><rect x="631.9" y="723.0" width="4.9" height="15" fill="#67f967" rx="2" ry="2"/>
+<text x="634.9" y="734.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/AbstractChannelHandlerContext.invokeChannelRead (40,128 samples, 0.42%)</title><rect x="631.9" y="707.0" width="4.9" height="15" fill="#42d742" rx="2" ry="2"/>
+<text x="634.9" y="718.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/AbstractChannelHandlerContext.invokeChannelRead (40,128 samples, 0.42%)</title><rect x="631.9" y="691.0" width="4.9" height="15" fill="#47db47" rx="2" ry="2"/>
+<text x="634.9" y="702.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/DefaultChannelPipeline$HeadContext.channelRead (40,128 samples, 0.42%)</title><rect x="631.9" y="675.0" width="4.9" height="15" fill="#62f462" rx="2" ry="2"/>
+<text x="634.9" y="686.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/AbstractChannelHandlerContext.fireChannelRead (40,128 samples, 0.42%)</title><rect x="631.9" y="659.0" width="4.9" height="15" fill="#69fa69" rx="2" ry="2"/>
+<text x="634.9" y="670.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/AbstractChannelHandlerContext.invokeChannelRead (40,128 samples, 0.42%)</title><rect x="631.9" y="643.0" width="4.9" height="15" fill="#36cb36" rx="2" ry="2"/>
+<text x="634.9" y="654.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/AbstractChannelHandlerContext.invokeChannelRead (40,127 samples, 0.42%)</title><rect x="631.9" y="627.0" width="4.9" height="15" fill="#6afc6a" rx="2" ry="2"/>
+<text x="634.9" y="638.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/handler/codec/ByteToMessageDecoder.channelRead (40,127 samples, 0.42%)</title><rect x="631.9" y="611.0" width="4.9" height="15" fill="#51e451" rx="2" ry="2"/>
+<text x="634.9" y="622.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/handler/codec/ByteToMessageDecoder.fireChannelRead (39,747 samples, 0.41%)</title><rect x="631.9" y="595.0" width="4.9" height="15" fill="#37cc37" rx="2" ry="2"/>
+<text x="634.9" y="606.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/AbstractChannelHandlerContext.fireChannelRead (39,611 samples, 0.41%)</title><rect x="631.9" y="579.0" width="4.9" height="15" fill="#3dd23d" rx="2" ry="2"/>
+<text x="634.9" y="590.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/AbstractChannelHandlerContext.invokeChannelRead (39,609 samples, 0.41%)</title><rect x="631.9" y="563.0" width="4.9" height="15" fill="#59ec59" rx="2" ry="2"/>
+<text x="634.9" y="574.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/AbstractChannelHandlerContext.invokeChannelRead (39,599 samples, 0.41%)</title><rect x="631.9" y="547.0" width="4.9" height="15" fill="#67f867" rx="2" ry="2"/>
+<text x="634.9" y="558.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/SimpleChannelInboundHandler.channelRead (39,599 samples, 0.41%)</title><rect x="631.9" y="531.0" width="4.9" height="15" fill="#46db46" rx="2" ry="2"/>
+<text x="634.9" y="542.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/helidon/webserver/ForwardingHandler.channelRead0 (39,590 samples, 0.41%)</title><rect x="631.9" y="515.0" width="4.9" height="15" fill="#35cb35" rx="2" ry="2"/>
+<text x="634.9" y="526.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/helidon/webserver/RequestRouting.route (39,374 samples, 0.41%)</title><rect x="631.9" y="499.0" width="4.9" height="15" fill="#33c933" rx="2" ry="2"/>
+<text x="634.9" y="510.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/helidon/webserver/RequestRouting$RoutedRequest.next (37,024 samples, 0.38%)</title><rect x="632.0" y="483.0" width="4.5" height="15" fill="#4de14d" rx="2" ry="2"/>
+<text x="635.0" y="494.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pbouda/asyncprofiler/HttpServer$$Lambda$27/838411509.accept (36,705 samples, 0.38%)</title><rect x="632.0" y="467.0" width="4.5" height="15" fill="#35cb35" rx="2" ry="2"/>
+<text x="635.0" y="478.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pbouda/asyncprofiler/HttpServer.lambda$createRouting$2 (36,705 samples, 0.38%)</title><rect x="632.0" y="451.0" width="4.5" height="15" fill="#40d540" rx="2" ry="2"/>
+<text x="635.0" y="462.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pbouda/asyncprofiler/HttpServer.measure (36,704 samples, 0.38%)</title><rect x="632.0" y="435.0" width="4.5" height="15" fill="#6cfd6c" rx="2" ry="2"/>
+<text x="635.0" y="446.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/classic/Logger.info (14,927 samples, 0.16%)</title><rect x="632.0" y="419.0" width="1.9" height="15" fill="#68f968" rx="2" ry="2"/>
+<text x="635.0" y="430.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/classic/Logger.filterAndLog_0_Or3Plus (14,926 samples, 0.16%)</title><rect x="632.0" y="403.0" width="1.9" height="15" fill="#65f665" rx="2" ry="2"/>
+<text x="635.0" y="414.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/classic/Logger.buildLoggingEventAndAppend (14,925 samples, 0.16%)</title><rect x="632.0" y="387.0" width="1.9" height="15" fill="#41d641" rx="2" ry="2"/>
+<text x="635.0" y="398.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/classic/Logger.callAppenders (14,922 samples, 0.16%)</title><rect x="632.0" y="371.0" width="1.9" height="15" fill="#52e552" rx="2" ry="2"/>
+<text x="635.0" y="382.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/classic/Logger.appendLoopOnAppenders (14,921 samples, 0.16%)</title><rect x="632.0" y="355.0" width="1.9" height="15" fill="#48dc48" rx="2" ry="2"/>
+<text x="635.0" y="366.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/core/spi/AppenderAttachableImpl.appendLoopOnAppenders (14,921 samples, 0.16%)</title><rect x="632.0" y="339.0" width="1.9" height="15" fill="#5ff15f" rx="2" ry="2"/>
+<text x="635.0" y="350.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/core/UnsynchronizedAppenderBase.doAppend (14,920 samples, 0.16%)</title><rect x="632.0" y="323.0" width="1.9" height="15" fill="#50e450" rx="2" ry="2"/>
+<text x="635.0" y="334.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/core/OutputStreamAppender.append (14,918 samples, 0.16%)</title><rect x="632.0" y="307.0" width="1.9" height="15" fill="#5aec5a" rx="2" ry="2"/>
+<text x="635.0" y="318.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/core/OutputStreamAppender.subAppend (14,917 samples, 0.16%)</title><rect x="632.0" y="291.0" width="1.9" height="15" fill="#51e551" rx="2" ry="2"/>
+<text x="635.0" y="302.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/core/OutputStreamAppender.writeBytes (14,604 samples, 0.15%)</title><rect x="632.0" y="275.0" width="1.8" height="15" fill="#34ca34" rx="2" ry="2"/>
+<text x="635.0" y="286.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java/util/concurrent/locks/ReentrantLock.lock (13,005 samples, 0.14%)</title><rect x="632.2" y="259.0" width="1.6" height="15" fill="#4ce04c" rx="2" ry="2"/>
+<text x="635.2" y="270.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java/util/concurrent/locks/AbstractQueuedSynchronizer.acquire (13,005 samples, 0.14%)</title><rect x="632.2" y="243.0" width="1.6" height="15" fill="#69fb69" rx="2" ry="2"/>
+<text x="635.2" y="254.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java/util/concurrent/locks/AbstractQueuedSynchronizer.acquireQueued (13,004 samples, 0.14%)</title><rect x="632.2" y="227.0" width="1.6" height="15" fill="#69fb69" rx="2" ry="2"/>
+<text x="635.2" y="238.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java/util/concurrent/locks/AbstractQueuedSynchronizer.parkAndCheckInterrupt (13,003 samples, 0.14%)</title><rect x="632.2" y="211.0" width="1.6" height="15" fill="#5def5d" rx="2" ry="2"/>
+<text x="635.2" y="222.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java/util/concurrent/locks/LockSupport.park (13,003 samples, 0.14%)</title><rect x="632.2" y="195.0" width="1.6" height="15" fill="#43d743" rx="2" ry="2"/>
+<text x="635.2" y="206.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>jdk/internal/misc/Unsafe.park (13,002 samples, 0.14%)</title><rect x="632.2" y="179.0" width="1.6" height="15" fill="#5ef05e" rx="2" ry="2"/>
+<text x="635.2" y="190.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (12,996 samples, 0.14%)</title><rect x="632.2" y="163.0" width="1.6" height="15" fill="#eb6565" rx="2" ry="2"/>
+<text x="635.2" y="174.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__pthread_cond_wait (12,986 samples, 0.13%)</title><rect x="632.2" y="147.0" width="1.6" height="15" fill="#db4e4e" rx="2" ry="2"/>
+<text x="635.2" y="158.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>entry_SYSCALL_64_after_hwframe (12,986 samples, 0.13%)</title><rect x="632.2" y="131.0" width="1.6" height="15" fill="#ea8600" rx="2" ry="2"/>
+<text x="635.2" y="142.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_syscall_64 (12,986 samples, 0.13%)</title><rect x="632.2" y="115.0" width="1.6" height="15" fill="#c86400" rx="2" ry="2"/>
+<text x="635.2" y="126.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sys_futex (12,979 samples, 0.13%)</title><rect x="632.2" y="99.0" width="1.6" height="15" fill="#da7600" rx="2" ry="2"/>
+<text x="635.2" y="110.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_futex (12,979 samples, 0.13%)</title><rect x="632.2" y="83.0" width="1.6" height="15" fill="#f79300" rx="2" ry="2"/>
+<text x="635.2" y="94.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait (12,979 samples, 0.13%)</title><rect x="632.2" y="67.0" width="1.6" height="15" fill="#f38f00" rx="2" ry="2"/>
+<text x="635.2" y="78.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait_queue_me (12,979 samples, 0.13%)</title><rect x="632.2" y="51.0" width="1.6" height="15" fill="#d36f00" rx="2" ry="2"/>
+<text x="635.2" y="62.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>schedule (12,979 samples, 0.13%)</title><rect x="632.2" y="35.0" width="1.6" height="15" fill="#cc6800" rx="2" ry="2"/>
+<text x="635.2" y="46.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/helidon/webserver/Response.send (8,707 samples, 0.09%)</title><rect x="633.9" y="419.0" width="1.0" height="15" fill="#67f967" rx="2" ry="2"/>
+<text x="636.9" y="430.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/helidon/webserver/Response$SendLockSupport.access$100 (8,701 samples, 0.09%)</title><rect x="633.9" y="403.0" width="1.0" height="15" fill="#47db47" rx="2" ry="2"/>
+<text x="636.9" y="414.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/helidon/webserver/Response$SendLockSupport.execute (8,701 samples, 0.09%)</title><rect x="633.9" y="387.0" width="1.0" height="15" fill="#5bed5b" rx="2" ry="2"/>
+<text x="636.9" y="398.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/helidon/webserver/Response$$Lambda$149/37061303.run (8,699 samples, 0.09%)</title><rect x="633.9" y="371.0" width="1.0" height="15" fill="#6bfc6b" rx="2" ry="2"/>
+<text x="636.9" y="382.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/helidon/webserver/Response.lambda$send$4 (8,699 samples, 0.09%)</title><rect x="633.9" y="355.0" width="1.0" height="15" fill="#55e855" rx="2" ry="2"/>
+<text x="636.9" y="366.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pbouda/asyncprofiler/SafeStringGenerator.generate (12,769 samples, 0.13%)</title><rect x="635.0" y="419.0" width="1.5" height="15" fill="#59ec59" rx="2" ry="2"/>
+<text x="638.0" y="430.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/nio/AbstractNioMessageChannel$NioMessageUnsafe.read (15,422 samples, 0.16%)</title><rect x="636.9" y="739.0" width="1.9" height="15" fill="#65f765" rx="2" ry="2"/>
+<text x="639.9" y="750.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/DefaultChannelPipeline.fireChannelRead (12,032 samples, 0.13%)</title><rect x="636.9" y="723.0" width="1.5" height="15" fill="#4ce04c" rx="2" ry="2"/>
+<text x="639.9" y="734.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/AbstractChannelHandlerContext.invokeChannelRead (12,032 samples, 0.13%)</title><rect x="636.9" y="707.0" width="1.5" height="15" fill="#69fa69" rx="2" ry="2"/>
+<text x="639.9" y="718.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/AbstractChannelHandlerContext.invokeChannelRead (12,032 samples, 0.13%)</title><rect x="636.9" y="691.0" width="1.5" height="15" fill="#49dd49" rx="2" ry="2"/>
+<text x="639.9" y="702.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/DefaultChannelPipeline$HeadContext.channelRead (12,032 samples, 0.13%)</title><rect x="636.9" y="675.0" width="1.5" height="15" fill="#62f462" rx="2" ry="2"/>
+<text x="639.9" y="686.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/AbstractChannelHandlerContext.fireChannelRead (12,032 samples, 0.13%)</title><rect x="636.9" y="659.0" width="1.5" height="15" fill="#5bed5b" rx="2" ry="2"/>
+<text x="639.9" y="670.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/AbstractChannelHandlerContext.invokeChannelRead (12,032 samples, 0.13%)</title><rect x="636.9" y="643.0" width="1.5" height="15" fill="#68fa68" rx="2" ry="2"/>
+<text x="639.9" y="654.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/AbstractChannelHandlerContext.invokeChannelRead (12,031 samples, 0.13%)</title><rect x="636.9" y="627.0" width="1.5" height="15" fill="#4ee24e" rx="2" ry="2"/>
+<text x="639.9" y="638.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/handler/logging/LoggingHandler.channelRead (12,031 samples, 0.13%)</title><rect x="636.9" y="611.0" width="1.5" height="15" fill="#3ed33e" rx="2" ry="2"/>
+<text x="639.9" y="622.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/util/internal/logging/AbstractInternalLogger.log (8,390 samples, 0.09%)</title><rect x="637.4" y="595.0" width="1.0" height="15" fill="#6bfc6b" rx="2" ry="2"/>
+<text x="640.4" y="606.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/util/internal/logging/LocationAwareSlf4JLogger.debug (8,389 samples, 0.09%)</title><rect x="637.4" y="579.0" width="1.0" height="15" fill="#69fa69" rx="2" ry="2"/>
+<text x="640.4" y="590.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/util/internal/logging/LocationAwareSlf4JLogger.log (8,386 samples, 0.09%)</title><rect x="637.4" y="563.0" width="1.0" height="15" fill="#3ad03a" rx="2" ry="2"/>
+<text x="640.4" y="574.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/classic/Logger.log (8,386 samples, 0.09%)</title><rect x="637.4" y="547.0" width="1.0" height="15" fill="#66f866" rx="2" ry="2"/>
+<text x="640.4" y="558.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/classic/Logger.filterAndLog_0_Or3Plus (8,385 samples, 0.09%)</title><rect x="637.4" y="531.0" width="1.0" height="15" fill="#58eb58" rx="2" ry="2"/>
+<text x="640.4" y="542.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/classic/Logger.buildLoggingEventAndAppend (8,384 samples, 0.09%)</title><rect x="637.4" y="515.0" width="1.0" height="15" fill="#4bdf4b" rx="2" ry="2"/>
+<text x="640.4" y="526.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/classic/Logger.callAppenders (8,383 samples, 0.09%)</title><rect x="637.4" y="499.0" width="1.0" height="15" fill="#57ea57" rx="2" ry="2"/>
+<text x="640.4" y="510.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/classic/Logger.appendLoopOnAppenders (8,383 samples, 0.09%)</title><rect x="637.4" y="483.0" width="1.0" height="15" fill="#42d742" rx="2" ry="2"/>
+<text x="640.4" y="494.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/core/spi/AppenderAttachableImpl.appendLoopOnAppenders (8,383 samples, 0.09%)</title><rect x="637.4" y="467.0" width="1.0" height="15" fill="#61f361" rx="2" ry="2"/>
+<text x="640.4" y="478.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/core/UnsynchronizedAppenderBase.doAppend (8,383 samples, 0.09%)</title><rect x="637.4" y="451.0" width="1.0" height="15" fill="#44d844" rx="2" ry="2"/>
+<text x="640.4" y="462.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/core/OutputStreamAppender.append (8,381 samples, 0.09%)</title><rect x="637.4" y="435.0" width="1.0" height="15" fill="#4ce04c" rx="2" ry="2"/>
+<text x="640.4" y="446.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ch/qos/logback/core/OutputStreamAppender.subAppend (8,381 samples, 0.09%)</title><rect x="637.4" y="419.0" width="1.0" height="15" fill="#3fd43f" rx="2" ry="2"/>
+<text x="640.4" y="430.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/nio/NioEventLoop.select (3,722,763 samples, 38.70%)</title><rect x="638.8" y="787.0" width="456.6" height="15" fill="#3dd23d" rx="2" ry="2"/>
+<text x="641.8" y="798.0">io/netty/channel/nio/NioEventLoop.select</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io/netty/channel/nio/SelectedSelectionKeySetSelector.select (3,722,756 samples, 38.70%)</title><rect x="638.8" y="771.0" width="456.6" height="15" fill="#42d742" rx="2" ry="2"/>
+<text x="641.8" y="782.0">io/netty/channel/nio/SelectedSelectionKeySetSelector.select</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun/nio/ch/SelectorImpl.select (3,722,743 samples, 38.70%)</title><rect x="638.8" y="755.0" width="456.6" height="15" fill="#53e653" rx="2" ry="2"/>
+<text x="641.8" y="766.0">sun/nio/ch/SelectorImpl.select</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun/nio/ch/SelectorImpl.lockAndDoSelect (3,722,740 samples, 38.70%)</title><rect x="638.8" y="739.0" width="456.6" height="15" fill="#4ade4a" rx="2" ry="2"/>
+<text x="641.8" y="750.0">sun/nio/ch/SelectorImpl.lockAndDoSelect</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun/nio/ch/EPollSelectorImpl.doSelect (3,722,737 samples, 38.70%)</title><rect x="638.8" y="723.0" width="456.6" height="15" fill="#3cd13c" rx="2" ry="2"/>
+<text x="641.8" y="734.0">sun/nio/ch/EPollSelectorImpl.doSelect</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun/nio/ch/EPoll.wait (3,721,203 samples, 38.68%)</title><rect x="638.9" y="707.0" width="456.4" height="15" fill="#68f968" rx="2" ry="2"/>
+<text x="641.9" y="718.0">sun/nio/ch/EPoll.wait</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (3,721,072 samples, 38.68%)</title><rect x="638.9" y="691.0" width="456.4" height="15" fill="#cd3a3a" rx="2" ry="2"/>
+<text x="641.9" y="702.0">[unknown]</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__pthread_cond_wait (79,211 samples, 0.82%)</title><rect x="639.0" y="675.0" width="9.7" height="15" fill="#ce3c3c" rx="2" ry="2"/>
+<text x="642.0" y="686.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>entry_SYSCALL_64_after_hwframe (79,206 samples, 0.82%)</title><rect x="639.0" y="659.0" width="9.7" height="15" fill="#de7a00" rx="2" ry="2"/>
+<text x="642.0" y="670.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_syscall_64 (79,206 samples, 0.82%)</title><rect x="639.0" y="643.0" width="9.7" height="15" fill="#ef8b00" rx="2" ry="2"/>
+<text x="642.0" y="654.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sys_futex (79,192 samples, 0.82%)</title><rect x="639.0" y="627.0" width="9.7" height="15" fill="#fe9a00" rx="2" ry="2"/>
+<text x="642.0" y="638.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_futex (79,192 samples, 0.82%)</title><rect x="639.0" y="611.0" width="9.7" height="15" fill="#fa9600" rx="2" ry="2"/>
+<text x="642.0" y="622.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait (79,192 samples, 0.82%)</title><rect x="639.0" y="595.0" width="9.7" height="15" fill="#ea8600" rx="2" ry="2"/>
+<text x="642.0" y="606.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait_queue_me (79,192 samples, 0.82%)</title><rect x="639.0" y="579.0" width="9.7" height="15" fill="#d67200" rx="2" ry="2"/>
+<text x="642.0" y="590.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>schedule (79,192 samples, 0.82%)</title><rect x="639.0" y="563.0" width="9.7" height="15" fill="#ee8a00" rx="2" ry="2"/>
+<text x="642.0" y="574.0"></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>epoll_wait (3,640,633 samples, 37.84%)</title><rect x="648.7" y="675.0" width="446.6" height="15" fill="#dc4f4f" rx="2" ry="2"/>
+<text x="651.7" y="686.0">epoll_wait</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>entry_SYSCALL_64_after_hwframe (3,640,539 samples, 37.84%)</title><rect x="648.7" y="659.0" width="446.5" height="15" fill="#d16d00" rx="2" ry="2"/>
+<text x="651.7" y="670.0">entry_SYSCALL_64_after_hwframe</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_syscall_64 (3,640,539 samples, 37.84%)</title><rect x="648.7" y="643.0" width="446.5" height="15" fill="#cd6900" rx="2" ry="2"/>
+<text x="651.7" y="654.0">do_syscall_64</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sys_epoll_wait (3,639,072 samples, 37.83%)</title><rect x="648.9" y="627.0" width="446.3" height="15" fill="#e37f00" rx="2" ry="2"/>
+<text x="651.9" y="638.0">sys_epoll_wait</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ep_poll (3,639,072 samples, 37.83%)</title><rect x="648.9" y="611.0" width="446.3" height="15" fill="#cd6900" rx="2" ry="2"/>
+<text x="651.9" y="622.0">ep_poll</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>schedule_hrtimeout_range (3,639,056 samples, 37.83%)</title><rect x="648.9" y="595.0" width="446.3" height="15" fill="#c76300" rx="2" ry="2"/>
+<text x="651.9" y="606.0">schedule_hrtimeout_range</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>schedule_hrtimeout_range_clock (3,639,056 samples, 37.83%)</title><rect x="648.9" y="579.0" width="446.3" height="15" fill="#ed8900" rx="2" ry="2"/>
+<text x="651.9" y="590.0">schedule_hrtimeout_range_clock</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>schedule (3,639,056 samples, 37.83%)</title><rect x="648.9" y="563.0" width="446.3" height="15" fill="#c66200" rx="2" ry="2"/>
+<text x="651.9" y="574.0">schedule</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java/lang/ref/Reference$ReferenceHandler.run (253,260 samples, 2.63%)</title><rect x="1096.4" y="851.0" width="31.1" height="15" fill="#61f361" rx="2" ry="2"/>
+<text x="1099.4" y="862.0">ja..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java/lang/ref/Reference.processPendingReferences (253,260 samples, 2.63%)</title><rect x="1096.4" y="835.0" width="31.1" height="15" fill="#3bd13b" rx="2" ry="2"/>
+<text x="1099.4" y="846.0">ja..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java/lang/ref/Reference.waitForReferencePendingList (253,260 samples, 2.63%)</title><rect x="1096.4" y="819.0" width="31.1" height="15" fill="#5ef05e" rx="2" ry="2"/>
+<text x="1099.4" y="830.0">ja..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (253,259 samples, 2.63%)</title><rect x="1096.4" y="803.0" width="31.1" height="15" fill="#cc3737" rx="2" ry="2"/>
+<text x="1099.4" y="814.0">[u..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__pthread_cond_wait (253,170 samples, 2.63%)</title><rect x="1096.4" y="787.0" width="31.1" height="15" fill="#fc7e7e" rx="2" ry="2"/>
+<text x="1099.4" y="798.0">__..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>entry_SYSCALL_64_after_hwframe (253,163 samples, 2.63%)</title><rect x="1096.4" y="771.0" width="31.1" height="15" fill="#c15d00" rx="2" ry="2"/>
+<text x="1099.4" y="782.0">en..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_syscall_64 (253,163 samples, 2.63%)</title><rect x="1096.4" y="755.0" width="31.1" height="15" fill="#df7b00" rx="2" ry="2"/>
+<text x="1099.4" y="766.0">do..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sys_futex (253,078 samples, 2.63%)</title><rect x="1096.4" y="739.0" width="31.1" height="15" fill="#c96500" rx="2" ry="2"/>
+<text x="1099.4" y="750.0">sy..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_futex (253,078 samples, 2.63%)</title><rect x="1096.4" y="723.0" width="31.1" height="15" fill="#cd6900" rx="2" ry="2"/>
+<text x="1099.4" y="734.0">do..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait (253,078 samples, 2.63%)</title><rect x="1096.4" y="707.0" width="31.1" height="15" fill="#f18d00" rx="2" ry="2"/>
+<text x="1099.4" y="718.0">fu..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait_queue_me (253,078 samples, 2.63%)</title><rect x="1096.4" y="691.0" width="31.1" height="15" fill="#ed8900" rx="2" ry="2"/>
+<text x="1099.4" y="702.0">fu..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>schedule (253,078 samples, 2.63%)</title><rect x="1096.4" y="675.0" width="31.1" height="15" fill="#e88400" rx="2" ry="2"/>
+<text x="1099.4" y="686.0">sc..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>jdk/internal/misc/InnocuousThread.run (236,631 samples, 2.46%)</title><rect x="1127.5" y="851.0" width="29.0" height="15" fill="#6cfd6c" rx="2" ry="2"/>
+<text x="1130.5" y="862.0">jd..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java/lang/Thread.run (236,631 samples, 2.46%)</title><rect x="1127.5" y="835.0" width="29.0" height="15" fill="#58eb58" rx="2" ry="2"/>
+<text x="1130.5" y="846.0">ja..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>jdk/internal/ref/CleanerImpl.run (236,631 samples, 2.46%)</title><rect x="1127.5" y="819.0" width="29.0" height="15" fill="#5ff15f" rx="2" ry="2"/>
+<text x="1130.5" y="830.0">jd..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java/lang/ref/ReferenceQueue.remove (236,631 samples, 2.46%)</title><rect x="1127.5" y="803.0" width="29.0" height="15" fill="#37cd37" rx="2" ry="2"/>
+<text x="1130.5" y="814.0">ja..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java/lang/Object.wait (236,631 samples, 2.46%)</title><rect x="1127.5" y="787.0" width="29.0" height="15" fill="#3acf3a" rx="2" ry="2"/>
+<text x="1130.5" y="798.0">ja..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__pthread_cond_timedwait (236,560 samples, 2.46%)</title><rect x="1127.5" y="771.0" width="29.0" height="15" fill="#e45b5b" rx="2" ry="2"/>
+<text x="1130.5" y="782.0">__..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>entry_SYSCALL_64_after_hwframe (236,554 samples, 2.46%)</title><rect x="1127.5" y="755.0" width="29.0" height="15" fill="#c35f00" rx="2" ry="2"/>
+<text x="1130.5" y="766.0">en..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_syscall_64 (236,554 samples, 2.46%)</title><rect x="1127.5" y="739.0" width="29.0" height="15" fill="#c25e00" rx="2" ry="2"/>
+<text x="1130.5" y="750.0">do..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sys_futex (236,473 samples, 2.46%)</title><rect x="1127.5" y="723.0" width="29.0" height="15" fill="#cb6700" rx="2" ry="2"/>
+<text x="1130.5" y="734.0">sy..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_futex (236,473 samples, 2.46%)</title><rect x="1127.5" y="707.0" width="29.0" height="15" fill="#db7700" rx="2" ry="2"/>
+<text x="1130.5" y="718.0">do..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait (236,473 samples, 2.46%)</title><rect x="1127.5" y="691.0" width="29.0" height="15" fill="#f38f00" rx="2" ry="2"/>
+<text x="1130.5" y="702.0">fu..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>futex_wait_queue_me (236,473 samples, 2.46%)</title><rect x="1127.5" y="675.0" width="29.0" height="15" fill="#e37f00" rx="2" ry="2"/>
+<text x="1130.5" y="686.0">fu..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>schedule (236,473 samples, 2.46%)</title><rect x="1127.5" y="659.0" width="29.0" height="15" fill="#ef8b00" rx="2" ry="2"/>
+<text x="1130.5" y="670.0">sc..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>start_thread (272,985 samples, 2.84%)</title><rect x="1156.5" y="851.0" width="33.5" height="15" fill="#ca3636" rx="2" ry="2"/>
+<text x="1159.5" y="862.0">st..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>thread_native_entry(Thread*) (272,985 samples, 2.84%)</title><rect x="1156.5" y="835.0" width="33.5" height="15" fill="#d03e3e" rx="2" ry="2"/>
+<text x="1159.5" y="846.0">th..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>JavaThread::run() (272,342 samples, 2.83%)</title><rect x="1156.5" y="819.0" width="33.4" height="15" fill="#e5e545" rx="2" ry="2"/>
+<text x="1159.5" y="830.0">Ja..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>JavaThread::thread_main_inner() (272,342 samples, 2.83%)</title><rect x="1156.5" y="803.0" width="33.4" height="15" fill="#baba36" rx="2" ry="2"/>
+<text x="1159.5" y="814.0">Ja..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>attach_listener_thread_entry(JavaThread*, Thread*) (270,148 samples, 2.81%)</title><rect x="1156.8" y="787.0" width="33.1" height="15" fill="#f87979" rx="2" ry="2"/>
+<text x="1159.8" y="798.0">at..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>AttachListener::dequeue() (270,148 samples, 2.81%)</title><rect x="1156.8" y="771.0" width="33.1" height="15" fill="#b5b534" rx="2" ry="2"/>
+<text x="1159.8" y="782.0">At..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (270,148 samples, 2.81%)</title><rect x="1156.8" y="755.0" width="33.1" height="15" fill="#fe8181" rx="2" ry="2"/>
+<text x="1159.8" y="766.0">[u..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__libc_accept (270,148 samples, 2.81%)</title><rect x="1156.8" y="739.0" width="33.1" height="15" fill="#ca3636" rx="2" ry="2"/>
+<text x="1159.8" y="750.0">__..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>entry_SYSCALL_64_after_hwframe (270,140 samples, 2.81%)</title><rect x="1156.8" y="723.0" width="33.1" height="15" fill="#f69200" rx="2" ry="2"/>
+<text x="1159.8" y="734.0">en..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>do_syscall_64 (270,140 samples, 2.81%)</title><rect x="1156.8" y="707.0" width="33.1" height="15" fill="#c25e00" rx="2" ry="2"/>
+<text x="1159.8" y="718.0">do..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sys_accept (270,079 samples, 2.81%)</title><rect x="1156.8" y="691.0" width="33.1" height="15" fill="#be5a00" rx="2" ry="2"/>
+<text x="1159.8" y="702.0">sy..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>SYSC_accept4 (270,079 samples, 2.81%)</title><rect x="1156.8" y="675.0" width="33.1" height="15" fill="#f99500" rx="2" ry="2"/>
+<text x="1159.8" y="686.0">SY..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>unix_accept (269,926 samples, 2.81%)</title><rect x="1156.8" y="659.0" width="33.1" height="15" fill="#e48000" rx="2" ry="2"/>
+<text x="1159.8" y="670.0">un..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>skb_recv_datagram (269,926 samples, 2.81%)</title><rect x="1156.8" y="643.0" width="33.1" height="15" fill="#c96500" rx="2" ry="2"/>
+<text x="1159.8" y="654.0">sk..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__skb_recv_datagram (269,926 samples, 2.81%)</title><rect x="1156.8" y="627.0" width="33.1" height="15" fill="#c86400" rx="2" ry="2"/>
+<text x="1159.8" y="638.0">__..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__skb_wait_for_more_packets (269,926 samples, 2.81%)</title><rect x="1156.8" y="611.0" width="33.1" height="15" fill="#d77300" rx="2" ry="2"/>
+<text x="1159.8" y="622.0">__..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>schedule_timeout (269,926 samples, 2.81%)</title><rect x="1156.8" y="595.0" width="33.1" height="15" fill="#f99500" rx="2" ry="2"/>
+<text x="1159.8" y="606.0">sc..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>schedule (269,926 samples, 2.81%)</title><rect x="1156.8" y="579.0" width="33.1" height="15" fill="#f38f00" rx="2" ry="2"/>
+<text x="1159.8" y="590.0">sc..</text>
+</g>
+</svg>
