@@ -5,6 +5,8 @@
 - https://www.youtube.com/watch?v=ugRrFdda_JQ
 - IntelliJ Support: https://www.jetbrains.com/help/idea/cpu-profiler.html
 
+[Idea-Settings](idea-settings.png)
+
 ```
 mvn gatling:test -Dgatling.simulationClass=pbouda.asyncprofiler.gatling.Generator
 mvn gatling:test -Dgatling.simulationClass=pbouda.asyncprofiler.gatling.GeneratorLock
