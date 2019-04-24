@@ -3,6 +3,9 @@
 - https://www.javaspecialists.eu/archive/Issue249.html
 - https://mechanical-sympathy.blogspot.com/2011/07/false-sharing.html
 
+- https://dzone.com/articles/what-false-sharing-is-and-how-jvm-prevents-it
+- ^^^ Top Article
+
 We need to export a protected module to our compiler
 
 ```
