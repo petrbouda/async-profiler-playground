@@ -10,10 +10,6 @@
 Important point from https://github.com/jvm-profiling-tools/async-profiler : 
 
 ```
--XX:+PreserveFramePointer
-```
-
-```
 When agent is not loaded at JVM startup (by using -agentpath option) it is highly recommended 
 to use -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints JVM flags. Without those flags 
 the profiler will still work correctly but results might be less accurate e.g. without 
